@@ -18,14 +18,20 @@ WORKDIR /app
 
 # Upgrade pip、setuptools and wheel to the latest version
 RUN pip install --upgrade pip setuptools wheel
+# 清空原有源
+RUN echo "" > /etc/apt/sources.list && \
+    rm -f /etc/apt/sources.list.d/*  # 删除额外源文件
+
+# 添加阿里云源
+RUN echo "deb https://mirrors.aliyun.com/debian/ bookworm main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.aliyun.com/debian/ bookworm-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.aliyun.com/debian-security bookworm-security main contrib non-free" >> /etc/apt/sources.list
 
 # Install Rust and required build dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    build-essential \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+RUN apt-get update 
+RUN apt-get install -y curl pkg-config
+RUN rm -rf /var/lib/apt/lists/* 
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     && . $HOME/.cargo/env
 
 # Copy pyproject.toml and source code for dependency installation

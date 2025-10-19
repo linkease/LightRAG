@@ -1,6 +1,6 @@
 import { ButtonVariantType } from '@/components/ui/Button'
 
-export const backendBaseUrl = ''
+export const backendBaseUrl = '/lightrag'
 export const webuiPrefix = '/webui/'
 
 export const controlButtonVariant: ButtonVariantType = 'ghost'
