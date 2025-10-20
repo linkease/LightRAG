@@ -153,8 +153,17 @@ class QueryParam:
     This allows using different models for different query modes.
     """
 
-    is_user_query: bool = False
-    """If True, indicates this is a user query (API), otherwise internal (e.g. knowledge base build)."""
+    llm_query_model: str | None = None
+    """Optional model name to use specifically for user queries (API calls).
+    When set, indicates this is a user query and the specified model should be used instead of the default model.
+    This allows routing user queries to a different model (e.g., cloud-based) than internal operations (e.g., local).
+    If not specified (None), the default LLM model will be used for all operations.
+    
+    Example use cases:
+    - Set to 'gpt-4o' for user queries while using 'qwen-local' for knowledge base construction
+    - Cost optimization: cloud model for users, local model for internal tasks
+    - Performance optimization: fast model for queries, batch-optimized model for indexing
+    """
 
     user_prompt: str | None = None
     """User-provided prompt for the query.

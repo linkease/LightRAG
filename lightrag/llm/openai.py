@@ -173,18 +173,18 @@ async def openai_complete_if_cache(
     # Extract client configuration options
     client_configs = kwargs.pop("openai_client_configs", {})
 
-    # 兼容新策略：用户查询优先用 OPENAI_QUERY_KEY
-    is_user_query = False
-    if "is_user_query" in kwargs:
-        is_user_query = kwargs["is_user_query"]
-        # 不传递给 openai sdk
-        kwargs.pop("is_user_query")
+    # 检查是否指定了查询模型（用于用户查询时切换模型）
+    # 如果指定了 llm_query_model，说明这是用户查询，使用查询模型；否则使用默认模型
+    llm_query_model = kwargs.pop("llm_query_model", None)
+    
+    _model = model
+    if llm_query_model:
+        _model = llm_query_model
+        logger.debug(f"Using query model for user query: {_model}")
 
-    # 优先级：用户查询且 OPENAI_QUERY_KEY 存在 -> 用它，否则用 OPENAI_API_KEY
+    # API Key 处理
     _api_key = api_key
-    if is_user_query and os.getenv("OPENAI_QUERY_KEY"):
-        _api_key = os.getenv("OPENAI_QUERY_KEY")
-    elif not _api_key:
+    if not _api_key:
         _api_key = os.getenv("OPENAI_API_KEY")
 
     openai_async_client = create_openai_async_client(
@@ -201,7 +201,7 @@ async def openai_complete_if_cache(
     messages.append({"role": "user", "content": prompt})
 
     logger.debug("===== Entering func of LLM =====")
-    logger.debug(f"Model: {model}   Base URL: {base_url}")
+    logger.debug(f"Model: {_model}   Base URL: {base_url}")
     logger.debug(f"Client Configs: {client_configs}")
     logger.debug(f"Additional kwargs: {kwargs}")
     logger.debug(f"Num of history messages: {len(history_messages)}")
@@ -215,11 +215,11 @@ async def openai_complete_if_cache(
         # Don't use async with context manager, use client directly
         if "response_format" in kwargs:
             response = await openai_async_client.beta.chat.completions.parse(
-                model=model, messages=messages, **kwargs
+                model=_model, messages=messages, **kwargs
             )
         else:
             response = await openai_async_client.chat.completions.create(
-                model=model, messages=messages, **kwargs
+                model=_model, messages=messages, **kwargs
             )
     except APIConnectionError as e:
         logger.error(f"OpenAI API Connection Error: {e}")
@@ -235,7 +235,7 @@ async def openai_complete_if_cache(
         raise
     except Exception as e:
         logger.error(
-            f"OpenAI API Call Failed,\nModel: {model},\nParams: {kwargs}, Got: {e}"
+            f"OpenAI API Call Failed,\nModel: {_model},\nParams: {kwargs}, Got: {e}"
         )
         await openai_async_client.close()  # Ensure client is closed
         raise

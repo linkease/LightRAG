@@ -2345,8 +2345,9 @@ class LightRAG:
         logger.debug(f"[aquery_llm] Query param: {param}")
 
         global_config = asdict(self)
-        # 将 is_user_query 标志传递到 global_config 中，供底层 LLM 调用使用
-        global_config["is_user_query"] = getattr(param, "is_user_query", False)
+        # 将 llm_query_model 传递到 global_config，用于用户查询时使用不同的模型
+        # 如果设置了 llm_query_model，说明这是用户查询，将使用指定的模型
+        global_config["llm_query_model"] = getattr(param, "llm_query_model", None)
 
         try:
             query_result = None
