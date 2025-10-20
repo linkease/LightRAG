@@ -56,9 +56,21 @@ async def azure_openai_complete_if_cache(
     base_url = (
         base_url or os.getenv("AZURE_OPENAI_ENDPOINT") or os.getenv("LLM_BINDING_HOST")
     )
+    
+    # API Key 处理：优先使用用户特定的 API key（如果提供）
+    # 这允许为不同用户的请求使用独立的 API key，以便跟踪每个用户的 token 使用量
+    user_api_key = kwargs.pop("user_api_key", None)
+    
     api_key = (
-        api_key or os.getenv("AZURE_OPENAI_API_KEY") or os.getenv("LLM_BINDING_API_KEY")
+        user_api_key or
+        api_key or 
+        os.getenv("AZURE_OPENAI_API_KEY") or 
+        os.getenv("LLM_BINDING_API_KEY")
     )
+    
+    if user_api_key:
+        logger.debug(f"Using user-specific API key for this request")
+    
     api_version = (
         api_version
         or os.getenv("AZURE_OPENAI_API_VERSION")
@@ -67,6 +79,13 @@ async def azure_openai_complete_if_cache(
 
     kwargs.pop("hashing_kv", None)
     kwargs.pop("keyword_extraction", None)
+    
+    # 如果指定了 llm_query_model，说明这是用户查询，使用查询模型；否则使用默认模型
+    llm_query_model = kwargs.pop("llm_query_model", None)
+    if llm_query_model:
+        deployment = llm_query_model
+        logger.debug(f"Using query model for user query: {deployment}")
+    
     timeout = kwargs.pop("timeout", None)
 
     openai_async_client = AsyncAzureOpenAI(

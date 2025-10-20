@@ -182,10 +182,16 @@ async def openai_complete_if_cache(
         _model = llm_query_model
         logger.debug(f"Using query model for user query: {_model}")
 
-    # API Key 处理
-    _api_key = api_key
+    # API Key 处理：优先使用用户特定的 API key（如果提供）
+    # 这允许为不同用户的请求使用独立的 API key，以便跟踪每个用户的 token 使用量
+    user_api_key = kwargs.pop("user_api_key", None)
+    
+    _api_key = user_api_key or api_key
     if not _api_key:
         _api_key = os.getenv("OPENAI_API_KEY")
+    
+    if user_api_key:
+        logger.debug(f"Using user-specific API key for this request")
 
     openai_async_client = create_openai_async_client(
         api_key=_api_key,

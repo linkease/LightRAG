@@ -182,6 +182,17 @@ class QueryParam:
     containing citation information for the retrieved content.
     """
 
+    user_api_key: str | None = None
+    """User-specific API key for LLM requests.
+    When provided, this API key will be used instead of the default LLM_BINDING_API_KEY
+    for this specific query. This allows per-user API key tracking for token usage billing.
+    
+    Example use cases:
+    - Multi-tenant applications where each user has their own OpenAI API key
+    - Usage tracking and billing per user
+    - Separate API keys for different access tiers
+    """
+
 
 @dataclass
 class StorageNameSpace(ABC):

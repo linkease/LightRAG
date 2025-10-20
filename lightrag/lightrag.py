@@ -2227,6 +2227,10 @@ class LightRAG:
             fields at the top level.
         """
         global_config = asdict(self)
+        
+        # 将 user_api_key 传递到 global_config，用于用户查询时使用用户特定的 API key
+        # 如果设置了 user_api_key，说明这是用户查询，将使用用户提供的 API key
+        global_config["user_api_key"] = getattr(param, "user_api_key", None)
 
         # Create a copy of param to avoid modifying the original
         data_param = QueryParam(
@@ -2348,6 +2352,10 @@ class LightRAG:
         # 将 llm_query_model 传递到 global_config，用于用户查询时使用不同的模型
         # 如果设置了 llm_query_model，说明这是用户查询，将使用指定的模型
         global_config["llm_query_model"] = getattr(param, "llm_query_model", None)
+        
+        # 将 user_api_key 传递到 global_config，用于用户查询时使用用户特定的 API key
+        # 如果设置了 user_api_key，说明这是用户查询，将使用用户提供的 API key
+        global_config["user_api_key"] = getattr(param, "user_api_key", None)
 
         try:
             query_result = None

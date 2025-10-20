@@ -7,7 +7,7 @@ import logging
 import os
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from lightrag.base import QueryParam
 from lightrag.api.utils_api import get_combined_auth_dependency
 from pydantic import BaseModel, Field, field_validator
@@ -268,7 +268,10 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             },
         },
     )
-    async def query_text(request: QueryRequest):
+    async def query_text(
+        request: QueryRequest,
+        x_openai_key: Optional[str] = Header(None, alias="X-Openai-Key")
+    ):
         """
         Comprehensive RAG query endpoint with non-streaming response. Parameter "stream" is ignored.
 
@@ -345,6 +348,12 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             llm_query_model = os.getenv("LLM_QUERY_MODEL")
             if llm_query_model:
                 param.llm_query_model = llm_query_model
+            
+            # 如果请求提供了 X-Openai-Key Header，则使用它替代默认的 API key
+            # 这允许为不同用户的请求使用独立的 API key，以便跟踪每个用户的 token 使用量
+            if x_openai_key:
+                param.user_api_key = x_openai_key
+                logging.info(f"Using user-specific API key from X-Openai-Key header")
 
             result = await rag.aquery_llm(request.query, param=param)
 
@@ -435,7 +444,10 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             },
         },
     )
-    async def query_text_stream(request: QueryRequest):
+    async def query_text_stream(
+        request: QueryRequest,
+        x_openai_key: Optional[str] = Header(None, alias="X-Openai-Key")
+    ):
         """
         Advanced RAG query endpoint with flexible streaming response.
 
@@ -560,6 +572,12 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             llm_query_model = os.getenv("LLM_QUERY_MODEL")
             if llm_query_model:
                 param.llm_query_model = llm_query_model
+            
+            # 如果请求提供了 X-Openai-Key Header，则使用它替代默认的 API key
+            # 这允许为不同用户的请求使用独立的 API key，以便跟踪每个用户的 token 使用量
+            if x_openai_key:
+                param.user_api_key = x_openai_key
+                logging.info(f"Using user-specific API key from X-Openai-Key header")
 
             from fastapi.responses import StreamingResponse
 
@@ -901,7 +919,10 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             },
         },
     )
-    async def query_data(request: QueryRequest):
+    async def query_data(
+        request: QueryRequest,
+        x_openai_key: Optional[str] = Header(None, alias="X-Openai-Key")
+    ):
         """
         Advanced data retrieval endpoint for structured RAG analysis.
 
@@ -996,6 +1017,13 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         """
         try:
             param = request.to_query_params(False)  # No streaming for data endpoint
+            
+            # 如果请求提供了 X-Openai-Key Header，则使用它替代默认的 API key
+            # 这允许为不同用户的请求使用独立的 API key，以便跟踪每个用户的 token 使用量
+            if x_openai_key:
+                param.user_api_key = x_openai_key
+                logging.info(f"Using user-specific API key from X-Openai-Key header")
+            
             response = await rag.aquery_data(request.query, param=param)
 
             # aquery_data returns the new format with status, message, data, and metadata
