@@ -2394,6 +2394,7 @@ async def kg_query(
             history_messages=query_param.conversation_history,
             enable_cot=True,
             stream=query_param.stream,
+            is_user_query=global_config.get("is_user_query", False),
         )
 
         if hashing_kv and hashing_kv.global_config.get("enable_llm_cache"):
@@ -2536,7 +2537,11 @@ async def extract_keywords_only(
         # Apply higher priority (5) to query relation LLM function
         use_model_func = partial(use_model_func, _priority=5)
 
-    result = await use_model_func(kw_prompt, keyword_extraction=True)
+    result = await use_model_func(
+        kw_prompt, 
+        keyword_extraction=True,
+        is_user_query=global_config.get("is_user_query", False)
+    )
 
     # 5. Parse out JSON from the LLM response
     result = remove_think_tags(result)
@@ -4179,6 +4184,7 @@ async def naive_query(
             history_messages=query_param.conversation_history,
             enable_cot=True,
             stream=query_param.stream,
+            is_user_query=global_config.get("is_user_query", False),
         )
 
         if hashing_kv and hashing_kv.global_config.get("enable_llm_cache"):

@@ -289,6 +289,7 @@ class LightRAG:
     # LLM Configuration
     # ---
 
+
     llm_model_func: Callable[..., object] | None = field(default=None)
     """Function for interacting with the large language model (LLM). Must be set before use."""
 
@@ -2344,6 +2345,8 @@ class LightRAG:
         logger.debug(f"[aquery_llm] Query param: {param}")
 
         global_config = asdict(self)
+        # 将 is_user_query 标志传递到 global_config 中，供底层 LLM 调用使用
+        global_config["is_user_query"] = getattr(param, "is_user_query", False)
 
         try:
             query_result = None

@@ -337,25 +337,17 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                 - 500: Internal processing error (e.g., LLM service unavailable)
         """
         try:
-            param = request.to_query_params(
-                False
-            )  # Ensure stream=False for non-streaming endpoint
-            # Force stream=False for /query endpoint regardless of include_references setting
+            param = request.to_query_params(False)
             param.stream = False
+            param.is_user_query = True  # 标记为用户query
 
-            # Unified approach: always use aquery_llm for both cases
             result = await rag.aquery_llm(request.query, param=param)
 
-            # Extract LLM response and references from unified result
             llm_response = result.get("llm_response", {})
             references = result.get("data", {}).get("references", [])
-
-            # Get the non-streaming response content
             response_content = llm_response.get("content", "")
             if not response_content:
                 response_content = "No relevant context found for the query."
-
-            # Return response with or without references based on request
             if request.include_references:
                 return QueryResponse(response=response_content, references=references)
             else:
@@ -556,22 +548,19 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             Use streaming mode for real-time interfaces and non-streaming for batch processing.
         """
         try:
-            # Use the stream parameter from the request, defaulting to True if not specified
             stream_mode = request.stream if request.stream is not None else True
             param = request.to_query_params(stream_mode)
+            param.is_user_query = True  # 标记为用户query
 
             from fastapi.responses import StreamingResponse
 
-            # Unified approach: always use aquery_llm for all cases
             result = await rag.aquery_llm(request.query, param=param)
 
             async def stream_generator():
-                # Extract references and LLM response from unified result
                 references = result.get("data", {}).get("references", [])
                 llm_response = result.get("llm_response", {})
 
                 if llm_response.get("is_streaming"):
-                    # Streaming mode: send references first, then stream response chunks
                     if request.include_references:
                         yield f"{json.dumps({'references': references})}\n"
 
@@ -579,22 +568,18 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     if response_stream:
                         try:
                             async for chunk in response_stream:
-                                if chunk:  # Only send non-empty content
+                                if chunk:
                                     yield f"{json.dumps({'response': chunk})}\n"
                         except Exception as e:
                             logging.error(f"Streaming error: {str(e)}")
                             yield f"{json.dumps({'error': str(e)})}\n"
                 else:
-                    # Non-streaming mode: send complete response in one message
                     response_content = llm_response.get("content", "")
                     if not response_content:
                         response_content = "No relevant context found for the query."
-
-                    # Create complete response object
                     complete_response = {"response": response_content}
                     if request.include_references:
                         complete_response["references"] = references
-
                     yield f"{json.dumps(complete_response)}\n"
 
             return StreamingResponse(
@@ -604,7 +589,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "Content-Type": "application/x-ndjson",
-                    "X-Accel-Buffering": "no",  # Ensure proper handling of streaming response when proxied by Nginx
+                    "X-Accel-Buffering": "no",
                 },
             )
         except Exception as e:

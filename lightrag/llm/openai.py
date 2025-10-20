@@ -173,9 +173,22 @@ async def openai_complete_if_cache(
     # Extract client configuration options
     client_configs = kwargs.pop("openai_client_configs", {})
 
-    # Create the OpenAI client
+    # 兼容新策略：用户查询优先用 OPENAI_QUERY_KEY
+    is_user_query = False
+    if "is_user_query" in kwargs:
+        is_user_query = kwargs["is_user_query"]
+        # 不传递给 openai sdk
+        kwargs.pop("is_user_query")
+
+    # 优先级：用户查询且 OPENAI_QUERY_KEY 存在 -> 用它，否则用 OPENAI_API_KEY
+    _api_key = api_key
+    if is_user_query and os.getenv("OPENAI_QUERY_KEY"):
+        _api_key = os.getenv("OPENAI_QUERY_KEY")
+    elif not _api_key:
+        _api_key = os.getenv("OPENAI_API_KEY")
+
     openai_async_client = create_openai_async_client(
-        api_key=api_key,
+        api_key=_api_key,
         base_url=base_url,
         client_configs=client_configs,
     )

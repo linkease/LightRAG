@@ -146,11 +146,15 @@ class QueryParam:
     history_turns: int = int(os.getenv("HISTORY_TURNS", str(DEFAULT_HISTORY_TURNS)))
     """Number of complete conversation turns (user-assistant pairs) to consider in the response context."""
 
+
     model_func: Callable[..., object] | None = None
     """Optional override for the LLM model function to use for this specific query.
     If provided, this will be used instead of the global model function.
     This allows using different models for different query modes.
     """
+
+    is_user_query: bool = False
+    """If True, indicates this is a user query (API), otherwise internal (e.g. knowledge base build)."""
 
     user_prompt: str | None = None
     """User-provided prompt for the query.
