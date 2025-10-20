@@ -4,6 +4,7 @@ This module contains all query-related routes for the LightRAG API.
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -339,7 +340,11 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         try:
             param = request.to_query_params(False)
             param.stream = False
-            param.is_user_query = True  # 标记为用户query
+            
+            # 从环境变量读取用户查询专用模型
+            llm_query_model = os.getenv("LLM_QUERY_MODEL")
+            if llm_query_model:
+                param.llm_query_model = llm_query_model
 
             result = await rag.aquery_llm(request.query, param=param)
 
@@ -550,7 +555,11 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         try:
             stream_mode = request.stream if request.stream is not None else True
             param = request.to_query_params(stream_mode)
-            param.is_user_query = True  # 标记为用户query
+            
+            # 从环境变量读取用户查询专用模型
+            llm_query_model = os.getenv("LLM_QUERY_MODEL")
+            if llm_query_model:
+                param.llm_query_model = llm_query_model
 
             from fastapi.responses import StreamingResponse
 
