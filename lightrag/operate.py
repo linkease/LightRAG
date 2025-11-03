@@ -2395,6 +2395,8 @@ async def kg_query(
             enable_cot=True,
             stream=query_param.stream,
             llm_query_model=global_config.get("llm_query_model", None),
+            user_api_key=global_config.get("user_api_key", None),
+            is_user_query=bool(global_config.get("user_api_key", None)),
         )
 
         if hashing_kv and hashing_kv.global_config.get("enable_llm_cache"):
@@ -2538,9 +2540,11 @@ async def extract_keywords_only(
         use_model_func = partial(use_model_func, _priority=5)
 
     result = await use_model_func(
-        kw_prompt, 
+        kw_prompt,
         keyword_extraction=True,
-        llm_query_model=global_config.get("llm_query_model", None)
+        llm_query_model=global_config.get("llm_query_model", None),
+        user_api_key=global_config.get("user_api_key", None),
+        is_user_query=bool(global_config.get("user_api_key", None)),
     )
 
     # 5. Parse out JSON from the LLM response
@@ -4185,6 +4189,8 @@ async def naive_query(
             enable_cot=True,
             stream=query_param.stream,
             llm_query_model=global_config.get("llm_query_model", None),
+            user_api_key=global_config.get("user_api_key", None),
+            is_user_query=bool(global_config.get("user_api_key", None)),
         )
 
         if hashing_kv and hashing_kv.global_config.get("enable_llm_cache"):
