@@ -1,3 +1,4 @@
+from tenacity import retry, stop_after_attempt, wait_fixed
 from __future__ import annotations
 from functools import partial
 
@@ -2181,6 +2182,7 @@ async def extract_entities(
     chunk_max_async = global_config.get("llm_model_max_async", 4)
     semaphore = asyncio.Semaphore(chunk_max_async)
 
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(60))
     async def _process_with_semaphore(chunk):
         async with semaphore:
             try:
