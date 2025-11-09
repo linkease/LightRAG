@@ -1,5 +1,5 @@
-from tenacity import retry, stop_after_attempt, wait_fixed
 from __future__ import annotations
+from tenacity import retry, stop_after_attempt, wait_fixed
 from functools import partial
 
 import asyncio
