@@ -21,6 +21,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type,
+    before_sleep_log,
 )
 from lightrag.utils import (
     wrap_embedding_func_with_attrs,
@@ -33,6 +34,8 @@ from lightrag.api import __api_version__
 import numpy as np
 import base64
 from typing import Any, Union
+import asyncio
+import random
 
 from dotenv import load_dotenv
 
@@ -46,6 +49,51 @@ class InvalidResponseError(Exception):
     """Custom exception class for triggering retry mechanism"""
 
     pass
+
+
+def _is_qwen_rate_limit_error(exc: Exception) -> bool:
+    """Detect Aliyun Qwen-specific rate limit patterns.
+
+    Conditions:
+    - Error message contains "Requests rate limit exceeded" or
+      "You exceeded your current requests" (provider wording varies), or
+    - HTTP status code is 504 (Gateway Timeout) which is treated as rate limit in Qwen context.
+    """
+    try:
+        # Check common attributes possibly carried by provider SDK/errors
+        status = getattr(exc, "status", None) or getattr(exc, "status_code", None)
+        if isinstance(status, int) and status == 504:
+            return True
+    except Exception:
+        pass
+
+    text = str(exc)
+    text_lower = text.lower()
+    # Match typical vendor messages for throttling
+    if (
+        "requests rate limit exceeded" in text_lower
+        or "you exceeded your current requests" in text_lower
+    ):
+        return True
+
+    # Fallback: detect explicit 504 in string or gateway timeout phrases
+    if "504" in text or "gateway timeout" in text_lower:
+        return True
+
+    return False
+
+
+async def _maybe_wait_qwen_backoff(exc: Exception) -> None:
+    """If the exception indicates Qwen rate limit behavior, wait 60-120s.
+
+    This enforces provider guidance to pause longer before retry.
+    """
+    if _is_qwen_rate_limit_error(exc):
+        wait_seconds = random.randint(60, 120)
+        logger.warning(
+            f"Detected Aliyun Qwen rate limiting/504. Backing off for {wait_seconds}s before retry."
+        )
+        await asyncio.sleep(wait_seconds)
 
 
 def create_openai_async_client(
@@ -102,6 +150,7 @@ def create_openai_async_client(
         | retry_if_exception_type(APITimeoutError)
         | retry_if_exception_type(InvalidResponseError)
     ),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
 )
 async def openai_complete_if_cache(
     model: str,
@@ -230,20 +279,28 @@ async def openai_complete_if_cache(
     except APIConnectionError as e:
         logger.error(f"OpenAI API Connection Error: {e}")
         await openai_async_client.close()  # Ensure client is closed
+        # Handle Aliyun Qwen special throttling/504
+        await _maybe_wait_qwen_backoff(e)
         raise
     except RateLimitError as e:
         logger.error(f"OpenAI API Rate Limit Error: {e}")
         await openai_async_client.close()  # Ensure client is closed
+        # Handle Aliyun Qwen special throttling which requires longer backoff
+        await _maybe_wait_qwen_backoff(e)
         raise
     except APITimeoutError as e:
         logger.error(f"OpenAI API Timeout Error: {e}")
         await openai_async_client.close()  # Ensure client is closed
+        # Qwen sometimes surfaces heavy load as 504 Gateway Timeout
+        await _maybe_wait_qwen_backoff(e)
         raise
     except Exception as e:
         logger.error(
             f"OpenAI API Call Failed,\nModel: {_model},\nParams: {kwargs}, Got: {e}"
         )
         await openai_async_client.close()  # Ensure client is closed
+        # As a last resort, try the Qwen aware backoff
+        await _maybe_wait_qwen_backoff(e)
         raise
 
     if hasattr(response, "__aiter__"):
@@ -349,6 +406,8 @@ async def openai_complete_if_cache(
                     logger.debug(f"Streaming token usage (from API): {token_counts}")
                 elif token_tracker:
                     logger.debug("No usage information available in streaming response")
+                # Mark success for logging in finally block
+                success = True
             except Exception as e:
                 # Ensure COT is properly closed before handling exception
                 if enable_cot and cot_active:
@@ -376,8 +435,25 @@ async def openai_complete_if_cache(
                         )
                 # Ensure client is closed in case of exception
                 await openai_async_client.close()
+                # Apply Qwen-specific long backoff if applicable
+                await _maybe_wait_qwen_backoff(e)
                 raise
             finally:
+                # Log success after clean shutdown for streaming path
+                try:
+                    if 'success' in locals() and success:
+                        if final_chunk_usage:
+                            logger.info(
+                                "OpenAI streaming completion success: model=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+                                _model,
+                                getattr(final_chunk_usage, "prompt_tokens", None),
+                                getattr(final_chunk_usage, "completion_tokens", None),
+                                getattr(final_chunk_usage, "total_tokens", None),
+                            )
+                        else:
+                            logger.info("OpenAI streaming completion success: model=%s", _model)
+                except Exception:
+                    pass
                 # Final safety check for unclosed COT tags
                 if enable_cot and cot_active:
                     try:
@@ -485,6 +561,21 @@ async def openai_complete_if_cache(
             logger.debug(f"Response content len: {len(final_content)}")
             verbose_debug(f"Response: {response}")
 
+            # Info-level success log for non-streaming
+            try:
+                if hasattr(response, "usage") and response.usage:
+                    logger.info(
+                        "OpenAI completion success: model=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+                        _model,
+                        getattr(response.usage, "prompt_tokens", None),
+                        getattr(response.usage, "completion_tokens", None),
+                        getattr(response.usage, "total_tokens", None),
+                    )
+                else:
+                    logger.info("OpenAI completion success: model=%s", _model)
+            except Exception:
+                pass
+
             return final_content
         finally:
             # Ensure client is closed in all cases for non-streaming responses
@@ -591,6 +682,7 @@ async def nvidia_openai_complete(
         | retry_if_exception_type(APIConnectionError)
         | retry_if_exception_type(APITimeoutError)
     ),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
 )
 async def openai_embed(
     texts: list[str],
@@ -636,6 +728,20 @@ async def openai_embed(
                 "total_tokens": getattr(response.usage, "total_tokens", 0),
             }
             token_tracker.add_usage(token_counts)
+
+        # Info-level success log for embeddings
+        try:
+            if hasattr(response, "usage") and response.usage:
+                logger.info(
+                    "OpenAI embeddings success: model=%s, prompt_tokens=%s, total_tokens=%s",
+                    model,
+                    getattr(response.usage, "prompt_tokens", None),
+                    getattr(response.usage, "total_tokens", None),
+                )
+            else:
+                logger.info("OpenAI embeddings success: model=%s", model)
+        except Exception:
+            pass
 
         return np.array(
             [
