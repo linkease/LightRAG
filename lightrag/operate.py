@@ -2,6 +2,7 @@ from __future__ import annotations
 from functools import partial
 
 import asyncio
+import random
 import json
 import json_repair
 from typing import Any, AsyncIterator, overload, Literal
@@ -2187,6 +2188,13 @@ async def extract_entities(
             except Exception as e:
                 chunk_id = chunk[0]  # Extract chunk_id from chunk[0]
                 prefixed_exception = create_prefixed_exception(e, chunk_id)
+                # Qwen 504/RateLimit robust backoff: if error text contains '504', sleep 60-120s
+                err_text = str(e)
+                if "504" in err_text or "gateway timeout" in err_text.lower() or "requests rate limit exceeded" in err_text.lower() or "you exceeded your current requests" in err_text.lower():
+                    wait_seconds = random.randint(60, 120)
+                    logger.warning(f"[QwenBackoff@operate.py] Detected 504/RateLimit. Backing off for {wait_seconds}s before retry. Exception: {err_text}")
+                    import asyncio as _asyncio
+                    await _asyncio.sleep(wait_seconds)
                 raise prefixed_exception from e
 
     tasks = []
