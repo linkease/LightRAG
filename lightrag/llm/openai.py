@@ -51,13 +51,14 @@ class InvalidResponseError(Exception):
     pass
 
 
-def _is_qwen_rate_limit_error(exc: Exception) -> bool:
-    """Detect Aliyun Qwen-specific rate limit patterns.
 
-    Conditions:
+def _is_qwen_rate_limit_error(exc: Exception) -> bool:
+    """Detect Aliyun Qwen-specific rate limit patterns (robust version).
+
     - Error message contains "Requests rate limit exceeded" or
       "You exceeded your current requests" (provider wording varies), or
-    - HTTP status code is 504 (Gateway Timeout) which is treated as rate limit in Qwen context.
+    - HTTP status code is 504 (Gateway Timeout) or any string containing '504',
+      or 'gateway timeout' (case-insensitive).
     """
     try:
         # Check common attributes possibly carried by provider SDK/errors
@@ -76,8 +77,12 @@ def _is_qwen_rate_limit_error(exc: Exception) -> bool:
     ):
         return True
 
-    # Fallback: detect explicit 504 in string or gateway timeout phrases
-    if "504" in text or "gateway timeout" in text_lower:
+    # Robust: match any '504' (even if glued to other words), or 'gateway timeout'
+    if "504" in text_lower or "gateway timeout" in text_lower:
+        return True
+
+    # Extra: match 'internalservererror' with '504' nearby (for weird error formats)
+    if "internalservererror" in text_lower and "504" in text_lower:
         return True
 
     return False
@@ -87,13 +92,18 @@ async def _maybe_wait_qwen_backoff(exc: Exception) -> None:
     """If the exception indicates Qwen rate limit behavior, wait 60-120s.
 
     This enforces provider guidance to pause longer before retry.
+    Always logs the exception string for debugging.
     """
+    text = str(exc)
+    logger.debug(f"[QwenBackoff] Exception text for detection: {text}")
     if _is_qwen_rate_limit_error(exc):
         wait_seconds = random.randint(60, 120)
         logger.warning(
-            f"Detected Aliyun Qwen rate limiting/504. Backing off for {wait_seconds}s before retry."
+            f"Detected Aliyun Qwen rate limiting/504. Backing off for {wait_seconds}s before retry. Exception: {text}"
         )
         await asyncio.sleep(wait_seconds)
+    else:
+        logger.debug(f"[QwenBackoff] Not detected as Qwen rate limit. Exception: {text}")
 
 
 def create_openai_async_client(
